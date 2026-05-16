@@ -24,6 +24,7 @@ To execute successfully, maintain the following file layout in your working dire
 📂 data2png-par2/
 ├── 📄 vault.ps1      # PowerShell Context Wrapper & Environment Configurator
 ├── 📄 vault.py       # Core Layout Processing Matrix & Slice Coordinator
+├── 📄 vault.sh       # Linux Native Wrapper
 └── ⚙️ par2j64.exe     # MultiPar 64-bit Command Line Processing Engine
 ```
 
