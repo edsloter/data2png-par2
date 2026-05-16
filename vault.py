@@ -8,25 +8,31 @@ import argparse
 import shutil
 from PIL import Image
 
+# Dynamic Environment Detection
+IS_WINDOWS = sys.platform.startswith("win")
+ENGINE_NAME = "par2j64.exe" if IS_WINDOWS else "par2"
+
 def is_par2_installed():
-    return shutil.which("par2j64.exe") is not None
+    """Checks if the appropriate platform engine is available in the current PATH."""
+    return shutil.which(ENGINE_NAME) is not None
 
 def run_command(cmd, is_repair=False):
+    """Executes the engine command and safely parses platform-specific success states."""
     try:
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
-        # Exit 0: Completely clean dataset (No repair needed)
+        # Exit 0 is an absolute success path on all platforms
         if result.returncode == 0:
             return True
             
-        # MultiPar (par2j64) uses bitwise masks when repairs succeed with warnings.
-        # Common success codes include 1, 257, 272, etc. If the log explicitly says
-        # "Repaired successfully", we intercept it as a successful run.
         stdout_str = result.stdout.decode(errors='ignore') if result.stdout else ""
-        if is_repair and ("Repaired successfully" in stdout_str or "No repair is needed" in stdout_str):
+        
+        # Windows MultiPar (par2j64) uses bitwise exit codes (like 1, 257, 272) when 
+        # repairs succeed but trailing frame padding triggers structural warning flags.
+        if IS_WINDOWS and is_repair and ("Repaired successfully" in stdout_str or "No repair is needed" in stdout_str):
             return True
             
-        print(f"\n[!] MultiPar Engine failed with exit code: {result.returncode}")
+        print(f"\n[!] Parity Engine failed with exit code: {result.returncode}")
         if result.stdout:
             print(f"Engine Output:\n{stdout_str.strip()}")
         if result.stderr:
@@ -116,16 +122,20 @@ def encode_pure_png_vault(source_file, vault_dir, redundancy_pct, resolution):
             f_slice.write(slice_data)
         data_filenames.append(slice_name)
         
-    print(f"[*] Compiling MultiPar 64-bit correction frames...")
+    print(f"[*] Compiling {ENGINE_NAME} correction frames...")
     original_cwd = os.getcwd()
     os.chdir(tmp_dir)
     
-    par2_cmd = ["par2j64.exe", "c", f"/rr{redundancy_pct}", "recovery.par2"] + data_filenames
+    # Dynamic Parity Parameter Configuration Switch
+    # Windows MultiPar strictly requires /rr<pct>, Linux/WSL uses standard -r<pct>
+    parity_flag = f"/rr{redundancy_pct}" if IS_WINDOWS else f"-r{redundancy_pct}"
+    
+    par2_cmd = [ENGINE_NAME, "c", parity_flag, "recovery.par2"] + data_filenames
     success = run_command(par2_cmd)
     os.chdir(original_cwd)
     
     if not success:
-        print("[!] Execution halted: Could not calculate PAR2 data blocks.")
+        print("[!] Execution halted: Could not calculate parity matrix blocks.")
         return
         
     all_workspace_files = sorted(os.listdir(tmp_dir))
@@ -173,10 +183,10 @@ def decode_pure_png_vault(vault_dir, output_restored_path):
             with open(os.path.join(tmp_dir, orig_name), "wb") as f_out:
                 f_out.write(raw_bytes)
                 
-    print("[*] Launching system self-healing check matrix via par2j64...")
+    print(f"[*] Launching system self-healing check matrix via {ENGINE_NAME}...")
     original_cwd = os.getcwd()
     os.chdir(tmp_dir)
-    repair_cmd = ["par2j64.exe", "r", "recovery.par2"]
+    repair_cmd = [ENGINE_NAME, "r", "recovery.par2"]
     repair_success = run_command(repair_cmd, is_repair=True)
     os.chdir(original_cwd)
     
@@ -201,6 +211,7 @@ def shutil_cleanup(folder):
 
 def main():
     if not is_par2_installed():
+        print(f"\n[!] Error: Required engine '{ENGINE_NAME}' was not found in your execution PATH.")
         sys.exit(1)
     parser = argparse.ArgumentParser(description="Convert files into self-healing lossless PNG arrays.")
     subparsers = parser.add_subparsers(dest="mode", required=True)
